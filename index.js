@@ -11,23 +11,31 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// 模拟分析函数：支持严禁幻觉准则
+// 模拟分析函数
 const analyzeOne = async (url) => {
   const mockScore = Math.floor(Math.random() * 60);
   const mockReasons = [
-    `事实核查：该链接 ${url.substring(0,20)}... 备案正常`,
+    `事实核查：链接 ${url.substring(0, 20)}... 备案正常`,
     "准则确认：未发现虚假物流承诺",
-    "侵权检测：公开元数据未见品牌关键词"
+    "侵权检测：暂未命中高危词库"
   ];
   return { score: mockScore, reasons: mockReasons };
 };
 
 app.post('/api/analyze', async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "主君，请先赐予链接" });
+  // 【文案已更改】
+  if (!url) return res.status(400).json({ error: "请先填写链接" });
 
-  // 核心：把前端发来的一坨链接按行拆开，去掉空格
-  const urls = url.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+  const urls = url.match(/https?:\/\/(?:(?!https?:\/\/)[^\s])+/g) || [];
+
+  if (urls.length === 0) {
+    return res.status(400).json({ error: "未检测到有效的 http/https 链接，请检查格式" });
+  }
+
+  if (urls.length > 15) {
+    return res.status(400).json({ error: `批阅过载！单次最多 15 个，当前检测到 ${urls.length} 个` });
+  }
 
   try {
     const results = [];
@@ -39,12 +47,11 @@ app.post('/api/analyze', async (req, res) => {
       );
       results.push(db.rows[0]);
     }
-    // 返回数组，前端就能一个一个显示了
     res.json(results);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "金库写入失败，请检查数据库表结构" });
+    console.error("数据库写入失败:", err);
+    res.status(500).json({ error: "金库写入失败，可能是链接太长或数据库断开连接" });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('多链接分析引擎已就绪'));
+app.listen(process.env.PORT || 3000, () => console.log('多链接智能切割引擎已就绪'));
