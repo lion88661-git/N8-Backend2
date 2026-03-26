@@ -8,9 +8,10 @@ app.use(express.json());
 
 // 1. 这里的连接池配置改为“排队模式”
 const pool = new Pool({
+  // 确保 process.env.DATABASE_URL 路径绝对正确
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 2, // 限制同时连接数，防止被金库踢出来
+  max: 2, // 限制同时连接数，防止被 Supabase 免费版踢出来
   connectionTimeoutMillis: 15000, 
 });
 
@@ -18,15 +19,15 @@ const pool = new Pool({
 const analyzeOne = async (url) => {
   const mockScore = Math.floor(Math.random() * 60) + 20;
   const mockReasons = [
-    `事实核查：链接 ${url.substring(0, 15)}... 备案正常`,
-    "准则确认：未发现虚假物流承诺",
-    "侵权检测：暂未命中高危词库"
+    `实时核查：链接 ${url.substring(0, 15)}... 状态正常`,
+    "合规确认：未发现违规关键词",
+    "风险检测：数据库匹配度极低"
   ];
   return { score: mockScore, reasons: mockReasons };
 };
 
 app.post('/api/analyze', async (req, res) => {
-  // 注意：这里要适配你前端传过来的字段，是 url 还是 urls
+  // 适配前端传来的字段（支持单个 url 或 列表 urls）
   const { urls, url } = req.body;
   const targetUrls = urls || (url ? [url] : []);
 
@@ -34,7 +35,7 @@ app.post('/api/analyze', async (req, res) => {
 
   const results = [];
 
-  // 2. 关键：用 for 循环一个一个写，不要抢
+  // 2. 关键：用 for...of 循环，一个写完再写下一个，绝对不抢
   for (const link of targetUrls) {
     const analysis = await analyzeOne(link);
     try {
@@ -45,7 +46,7 @@ app.post('/api/analyze', async (req, res) => {
       results.push({ url: link, ...analysis, status: 'success' });
     } catch (err) {
       console.error('单条入库失败:', err.message);
-      // 就算这一条失败了，也得让后面的继续跑
+      // 就算单条失败，也不报错，继续跑下一个
     }
   }
 
